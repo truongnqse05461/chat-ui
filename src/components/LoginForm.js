@@ -10,6 +10,7 @@ import '../form.css'
 import { array } from "prop-types";
 import factoryWithThrowingShims from "prop-types/factoryWithThrowingShims";
 import fileDownload from 'js-file-download';
+import ChatContainer from "./ChatContainer";
 
 
 var ws = undefined;
@@ -20,7 +21,7 @@ class LoginForm extends Component {
     super();
     let authenticated = false
     let username = ""
-    if(localStorage.getItem("token") != null) {
+    if (localStorage.getItem("token") != null) {
       authenticated = true
       username = localStorage.getItem("username");
     }
@@ -30,7 +31,7 @@ class LoginForm extends Component {
       errors: {},
       submitSuccessfully: false,
       authenticated: authenticated,
-      inRoom: false,
+      inRoom: true,
       roomName: "",
       messages: [],
       inputMessage: "",
@@ -38,6 +39,11 @@ class LoginForm extends Component {
       image: "",
       avatarPath: "",
       fileUpload: "",
+      listRoom: [],
+      currentRoom: "",
+      currentRoomIndex: 0,
+      listMembers: [],
+      currentRoomObj: {},
     };
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleSubmit = this.handleSubmit.bind(this);
@@ -51,8 +57,14 @@ class LoginForm extends Component {
     this.handleRegister = this.handleRegister.bind(this);
     this.handleInputFileChange = this.handleInputFileChange.bind(this);
     this.handleSendFile = this.handleSendFile.bind(this);
+    this.initChat = this.initChat.bind(this);
+    this.handleInputChangeCreateRoom = this.handleInputChangeCreateRoom.bind(this);
+    this.renderChat = this.renderChat.bind(this);
+    this.createWSClient = this.createWSClient.bind(this);
   }
-  
+  componentDidMount(){
+    this.initChat();
+  }
 
   schema = Joi.object().keys({
     username: Joi.string()
@@ -98,27 +110,28 @@ class LoginForm extends Component {
     const user = new URLSearchParams()
     user.append('username', this.state.username)
     user.append('password', this.state.password)
-    
-    axios.post('http://localhost:8080/auth/login', user, 
-    {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    proxy: {
-      host: '10.61.57.22',
-      port: 3128
-    }
-    }).then(res => {
+
+    axios.post('http://localhost:8080/auth/login', user,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        proxy: {
+          host: '10.61.57.22',
+          port: 3128
+        }
+      }).then(res => {
         console.log(res)
-        if(res.data.Code == 1) {
+        if (res.data.Code == 1) {
           localStorage.setItem("token", res.data.Data)
           localStorage.setItem("username", this.state.username)
-          this.setState({ authenticated: true });
-          this.setState({ username: true });
-        }else {
+          this.setState({ authenticated: true, inRoom: true});
+          this.setState({ password: "" });
+          this.initChat();
+        } else {
           alert(res.data.Message);
         }
-        
+
       })
   }
 
@@ -142,22 +155,22 @@ class LoginForm extends Component {
     user.append('password', this.state.password)
     user.append('originalFile', this.state.image)
 
-    
-    axios.post('http://localhost:8080/auth/register', user, 
-    {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-    },
-    proxy: {
-      host: '10.61.57.22',
-      port: 3128
-    }
-    }).then(res => {
+
+    axios.post('http://localhost:8080/auth/register', user,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        proxy: {
+          host: '10.61.57.22',
+          port: 3128
+        }
+      }).then(res => {
         console.log(res)
-        
-        if(res.data.Code == 1) {
-          this.setState({viewRegister: false});
-        }else {
+
+        if (res.data.Code == 1) {
+          this.setState({ viewRegister: false, image: {} });
+        } else {
           alert(res.data.Message);
         }
       })
@@ -179,12 +192,51 @@ class LoginForm extends Component {
     return error ? error.details[0].message : null;
   }
 
-  logout(){
+  logout() {
     localStorage.removeItem("token")
-    this.setState({ authenticated: false });
+    localStorage.removeItem("username")
+    this.setState({ authenticated: false, inRoom: false });
   }
-  
-  createRoom(){
+
+  createWSClient(roomName){
+    const username = localStorage.getItem("username")
+    ws = new WebSocket("ws://localhost:8080/ws?roomname=" + roomName + "&username=" + username)
+    let token = localStorage.getItem("token")
+
+    ws.onopen = () => {
+      console.log("client in room " + roomName)
+    }
+
+    ws.onmessage = (event) => {
+      var res = JSON.parse(event.data)
+      console.log('receive new message' + res);
+
+      if (res.Type === 'New User') {
+
+      } else if (res.Type === 'Leave') {
+
+      } else {
+        let message = {
+          "avatar": res.Avatar,
+          "author": res.From,
+          "content": res.Message,
+          "isMine": false,
+          "type": res.MessageType
+        }
+
+        this.handleMsgGroup(message);
+
+        // message = '<b>' + res.From + '</b>: ' + res.Message 
+      }
+
+    }
+
+    ws.onclose = () => {
+      var message = '<b>me</b>: disconnected'
+    }
+  }
+
+  createRoom() {
 
     // axios.post('http://localhost:8080/file/download' , {},
     //     {
@@ -205,7 +257,7 @@ class LoginForm extends Component {
     //       const url = window.URL.createObjectURL(new Blob([res.data]));
     //         const link = document.createElement("a");
     //         link.href = url;
-    //         link.setAttribute("download", "test.xlsx"); //or any other extension
+    //         link.setAttribute("download", "file.PNG"); //or any other extension
     //         document.body.appendChild(link);
     //         link.click();
     //       // fileDownload(res.data, "test.xlsx");
@@ -236,10 +288,10 @@ class LoginForm extends Component {
     const username = localStorage.getItem("username")
     ws = new WebSocket("ws://localhost:8080/ws?roomname=" + roomName + "&username=" + username)
     let token = localStorage.getItem("token")
-    
+
     ws.onopen = () => {
 
-      axios.get('http://localhost:8080/user/info?username=' + username, 
+      axios.get('http://localhost:8080/user/info?username=' + username,
         {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -250,153 +302,159 @@ class LoginForm extends Component {
           }
         }).then(res => {
           console.log(res)
-          
-          if(res.data.Code == 1) {
-            this.setState({avatarPath: res.data.Data.img_path})
-          }else {
+
+          if (res.data.Code == 1) {
+            this.setState({ avatarPath: res.data.Data.img_path })
+          } else {
             alert(res.data.Message);
           }
         })
 
-      axios.get('http://localhost:8080/conv/get?roomname=' + roomName, 
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          proxy: {
-            host: '10.61.57.22',
-            port: 3128
-          }
-        }).then(res => {
-          console.log(res)
-          if(res.data.Code == 1) {
-            
-            let msgGroup = {
-              "messages": [],
-              "author" : ""
-            }
-            if(res.data.Data != null) {
-              for (const mess of res.data.Data) {
-                let message = {
-                  "avatar": mess.Author.Avatar,
-                  "author": mess.Author.Username,
-                  "content": mess.Content,
-                  "isMine": mess.Author.Username == username,
-                  "type": mess.Type
-                }
-                if(msgGroup.messages.length == 0){
-                  msgGroup = {
-                    "messages": [message],
-                    "author" : message.author,
-                    "isMine": message.author == username,
-                    "avatar": message.avatar
-                  }
-                }
-                else if(msgGroup.messages.length > 0 && message.author == msgGroup.author){
-                  msgGroup.messages.push(message)
-                } else if(msgGroup.messages.length > 0 && message.author != msgGroup.author) {
-                  this.setState({messages: this.state.messages.concat(msgGroup)})
-                  msgGroup = {
-                    "messages": [message],
-                    "author" : message.author,
-                    "isMine": message.author == username,
-                    "avatar": message.avatar
-                  }
-                }
-              }
-              this.setState({messages: this.state.messages.concat(msgGroup)})
-            }
+      // axios.get('http://localhost:8080/conv/get?roomname=' + roomName, 
+      //   {
+      //     headers: {
+      //       'Content-Type': 'application/x-www-form-urlencoded'
+      //     },
+      //     proxy: {
+      //       host: '10.61.57.22',
+      //       port: 3128
+      //     }
+      //   }).then(res => {
+      //     console.log(res)
+      //     if(res.data.Code == 1) {
 
-          }else {
-            alert(res.data.Message);
-          }
-          
-        })
+      //       let msgGroup = {
+      //         "messages": [],
+      //         "author" : ""
+      //       }
+      //       if(res.data.Data != null) {
+      //         for (const mess of res.data.Data) {
+      //           let message = {
+      //             "avatar": mess.Author.Avatar,
+      //             "author": mess.Author.Username,
+      //             "content": mess.Content,
+      //             "isMine": mess.Author.Username == username,
+      //             "type": mess.Type
+      //           }
+      //           if(msgGroup.messages.length == 0){
+      //             msgGroup = {
+      //               "messages": [message],
+      //               "author" : message.author,
+      //               "isMine": message.author == username,
+      //               "avatar": message.avatar
+      //             }
+      //           }
+      //           else if(msgGroup.messages.length > 0 && message.author == msgGroup.author){
+      //             msgGroup.messages.push(message)
+      //           } else if(msgGroup.messages.length > 0 && message.author != msgGroup.author) {
+      //             this.setState({messages: this.state.messages.concat(msgGroup)})
+      //             msgGroup = {
+      //               "messages": [message],
+      //               "author" : message.author,
+      //               "isMine": message.author == username,
+      //               "avatar": message.avatar
+      //             }
+      //           }
+      //         }
+      //         this.setState({messages: this.state.messages.concat(msgGroup)})
+      //       }
+
+      //     }else {
+      //       alert(res.data.Message);
+      //     }
+
+      //   })
+      this.initChat();
       this.setState({ inRoom: true, roomName: roomName });
-        console.log("Create new room")
+      console.log("Create new room")
     }
 
     ws.onmessage = (event) => {
-        var res = JSON.parse(event.data)
-        console.log('receive new message' + res);
+      var res = JSON.parse(event.data)
+      console.log('receive new message' + res);
 
-        if (res.Type === 'New User') {
-            
-        } else if (res.Type === 'Leave') {
-            
-        } else {
-          let message = {
-            "avatar": res.Avatar,
-            "author": res.From,
-            "content": res.Message,
-            "isMine": false,
-            "type": res.MessageType
-          }
-          
-          this.handleMsgGroup(message);
-          
-            // message = '<b>' + res.From + '</b>: ' + res.Message 
+      if (res.Type === 'New User') {
+
+      } else if (res.Type === 'Leave') {
+
+      } else {
+        let message = {
+          "avatar": res.Avatar,
+          "author": res.From,
+          "content": res.Message,
+          "isMine": false,
+          "type": res.MessageType
         }
+
+        this.handleMsgGroup(message);
+
+        // message = '<b>' + res.From + '</b>: ' + res.Message 
+      }
 
     }
 
     ws.onclose = () => {
-        var message = '<b>me</b>: disconnected'
+      var message = '<b>me</b>: disconnected'
     }
   }
 
-  handleMsgGroup(message){
+  handleMsgGroup(message) {
     let msgGroup = {
       "messages": [],
-      "author" : "",
-      "avatar" : ""
+      "author": "",
+      "avatar": ""
     }
     let len = this.state.messages.length;
     if (len > 0) {
       msgGroup = this.state.messages[len - 1];
     }
 
-    if(msgGroup.author == message.author) {
+    if (msgGroup.author == message.author) {
       msgGroup.messages.push(message)
-      this.setState({messages: this.state.messages})
+      this.setState({ messages: this.state.messages })
     } else {
       msgGroup = {
         "messages": [message],
-        "author" : message.author,
+        "author": message.author,
         "isMine": message.author == this.state.username,
         "avatar": message.avatar
       }
-      this.setState({messages: this.state.messages.concat(msgGroup)})
+      this.setState({ messages: this.state.messages.concat(msgGroup) })
     }
-    
+
   }
 
-  closeConversation(){
-    this.setState({inRoom: false})
+  closeConversation() {
+    this.setState({ inRoom: false })
   }
 
   handleInputChange({ currentTarget }) {
-    const errors = { ...this.state.errors };
+    // const errors = { ...this.state.errors };
 
     // const errorMessage = this.validateOnChange(currentTarget);
 
     // if (errorMessage) errors[currentTarget.name] = errorMessage;
     // else delete errors[currentTarget.name];
 
-    this.setState({ [currentTarget.name]: currentTarget.value, errors });
+    this.setState({ [currentTarget.name]: currentTarget.value });
+  }
+
+  handleInputChangeCreateRoom(event) {
+
+    this.setState({ [event.target.name]: event.target.value });
   }
 
   handleInputFileChange(event) {
 
-    this.setState({image: event.target.files[0]});
+    this.setState({ image: event.target.files[0] });
   }
 
-  updateInputMess(inputMess){
-    this.setState({inputMessage : inputMess});
+  updateInputMess(inputMess) {
+    this.setState({ inputMessage: inputMess });
     console.log('input: ' + this.state.inputMessage)
   }
 
-  sendMess(){
+  sendMess() {
     var messageRaw = document.querySelector('.publisher-input').value
     let message = {
       "author": this.state.username,
@@ -407,17 +465,18 @@ class LoginForm extends Component {
     this.handleMsgGroup(message)
     console.log(messageRaw)
     ws.send(JSON.stringify({
-        Message: messageRaw,
-        Type: "text"
+      Message: messageRaw,
+      Type: "text", 
+      Room: this.state.currentRoom,
     }));
     document.querySelector('.publisher-input').value = ''
   }
 
-  viewRegister(isViewRegister){
-    this.setState({viewRegister : isViewRegister});
+  viewRegister(isViewRegister) {
+    this.setState({ viewRegister: isViewRegister });
   }
 
-  handleSendFile(event){
+  handleSendFile(event) {
     let fileUpload = event.target.files[0];
     const request = new FormData()
     request.append('originalFile', fileUpload)
@@ -433,7 +492,7 @@ class LoginForm extends Component {
         }
       }).then(res => {
         console.log(res)
-        if(res.data.Code == 1) {
+        if (res.data.Code == 1) {
           let message = {
             "author": this.state.username,
             "content": res.data.Data,
@@ -442,20 +501,129 @@ class LoginForm extends Component {
           }
           this.handleMsgGroup(message)
           ws.send(JSON.stringify({
-              Message: res.data.Data,
-              Type: "file"
+            Message: res.data.Data,
+            Type: "file",
+            Room: this.state.currentRoom,
           }));
-        }else {
+        } else {
           alert(res.data.Message);
         }
-        
+
+      })
+  }
+  initChat() {
+    const username = localStorage.getItem("username")
+    axios.get('http://localhost:8080/user/info?username=' + username,
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          proxy: {
+            host: '10.61.57.22',
+            port: 3128
+          }
+        }).then(res => {
+          console.log(res)
+
+          if (res.data.Code == 1) {
+            this.setState({ avatarPath: res.data.Data.img_path })
+          } else {
+            alert(res.data.Message);
+          }
+        })
+    axios.get('http://localhost:8080/conv/get-all',
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        proxy: {
+          host: '10.61.57.22',
+          port: 3128
+        }
+      }).then(res => {
+        console.log(res)
+        if (res.data.Code == 1) {
+          if (res.data.Data != null) {
+            this.setState({ listRoom: res.data.Data });
+            for(let i = 0; i < res.data.Data.length; i ++) {
+              const room = res.data.Data[i];
+              if(room.Members.some(member => (member == username))){
+                this.renderChat(i, room);
+                this.setState({ inRoom: true, roomName: res.data.Data[i].Name});
+                break;
+              }
+            };
+
+            
+          }
+
+        } else {
+          alert(res.data.Message);
+        }
+
       })
   }
 
+  renderChat(i, room) {
+    let rooms = [...this.state.listRoom];
+    rooms[i] = room;
+    this.setState({listRoom: rooms});
+    this.setState({ currentRoomIndex: i, currentRoom: room.Name, listMembers: room.Members, currentRoomObj: room });
+    let msgGroupList = [];
+    if (room.Messages != null && room.Messages.length > 0) {
+      let msgGroup = {
+        "messages": [],
+        "author": ""
+      }
+      const username = localStorage.getItem("username")
+      for (const mess of room.Messages) {
+        let message = {
+          "avatar": mess.Author.Avatar,
+          "author": mess.Author.Username,
+          "content": mess.Content,
+          "isMine": mess.Author.Username == username,
+          "type": mess.Type
+        }
+        if (msgGroup.messages.length == 0) {
+          msgGroup = {
+            "messages": [message],
+            "author": message.author,
+            "isMine": message.author == username,
+            "avatar": message.avatar
+          }
+        }
+        else if (msgGroup.messages.length > 0 && message.author == msgGroup.author) {
+          msgGroup.messages.push(message)
+        } else if (msgGroup.messages.length > 0 && message.author != msgGroup.author) {
+          // this.setState({ messages: this.state.messages.concat(msgGroup) })
+          msgGroupList.push(msgGroup);
+          msgGroup = {
+            "messages": [message],
+            "author": message.author,
+            "isMine": message.author == username,
+            "avatar": message.avatar
+          }
+        }
+      }
+      if (msgGroup.messages.length > 0) {
+        msgGroupList.push(msgGroup);
+      }
+    }
+    
+    this.setState({ messages: msgGroupList })
+    this.closeCurrentWS();
+    this.createWSClient(room.Name);
+  }
+
+  closeCurrentWS(){
+    if(ws != undefined && ws != null)
+      ws.close();
+  }
+
   render() {
-    if(!this.state.authenticated && !this.state.inRoom && !this.state.viewRegister) {
+    if (!this.state.authenticated && !this.state.inRoom && !this.state.viewRegister) {
       return (
-      
+
         <div>
           <h1 className="text-center">Login Form</h1>
           <form onSubmit={this.handleSubmit}>
@@ -477,23 +645,23 @@ class LoginForm extends Component {
             />
             <div className="row">
               <div className="col-2" >
-                <button style={{width: '100%'}} disabled={this.validate()} className="btn btn-primary">
+                <button style={{ width: '100%' }} disabled={this.validate()} className="btn btn-primary">
                   Login
                 </button>
               </div>
-              <div className="col-2" style={{lineHeight: '33px'}}>
-                <a onClick={() => this.viewRegister(true)}  href="#">Register</a>
+              <div className="col-2" style={{ lineHeight: '33px' }}>
+                <a onClick={() => this.viewRegister(true)} href="#">Register</a>
               </div>
             </div>
-            
+
           </form>
         </div>
-          
-          
-        );
-    } else if(!this.state.authenticated && !this.state.inRoom && this.state.viewRegister){
+
+
+      );
+    } else if (!this.state.authenticated && !this.state.inRoom && this.state.viewRegister) {
       return (
-      
+
         <div>
           <h1 className="text-center">Register</h1>
           <form onSubmit={this.handleRegister}>
@@ -522,49 +690,38 @@ class LoginForm extends Component {
             />
             <div className="row">
               <div className="col-2" >
-                <button style={{width: '100%'}} disabled={this.validate()} className="btn btn-primary">
+                <button style={{ width: '100%' }} disabled={this.validate()} className="btn btn-primary">
                   Register
                 </button>
               </div>
-              <div className="col-2" style={{lineHeight: '33px'}}>
+              <div className="col-2" style={{ lineHeight: '33px' }}>
                 <a onClick={() => this.viewRegister(false)} href="#">Login</a>
               </div>
             </div>
-            
+
           </form>
         </div>
-          
-          
-        );
-    }
-    
-    else if(this.state.authenticated && !this.state.inRoom) {
-      return (
-      <div>
-        <h1>Authenticated</h1>
-        <div className="row">
-          <div className="col">
-            <button onClick={this.createRoom} className="btn btn-primary">
-                Join Room
-            </button>
-          </div>
-        </div>
-        <div className="row">
-          <div className="col">
-            <button onClick={this.logout} className="btn btn-primary">
-                Logout
-            </button>
-          </div>
-        </div>
-      </div>
-      );
-    }else {
-      return (
-        < MessageContainer roomName = {this.state.roomName} sendMess = {this.sendMess} messages={this.state.messages} updateInputMess={this.updateInputMess} 
-        closeConversation={this.closeConversation} imagePath={this.state.avatarPath} handleSendFile={this.handleSendFile}/>
+
+
       );
     }
-    
+
+    else if (this.state.authenticated && this.state.inRoom) {
+      return (
+        < ChatContainer roomName={this.state.roomName} sendMess={this.sendMess} messages={this.state.messages} updateInputMess={this.updateInputMess}
+          closeConversation={this.closeConversation} imagePath={this.state.avatarPath} handleSendFile={this.handleSendFile}
+          listRoom={this.state.listRoom} currentRoom={this.state.currentRoom} currentRoomIndex={this.state.currentRoomIndex} 
+          renderChat={this.renderChat} initChat={this.initChat} listMembers={this.state.listMembers} 
+          currentRoomObj={this.state.currentRoomObj} logout={this.logout} />
+      );
+    } else {
+      // return (
+      //   < MessageContainer roomName = {this.state.roomName} sendMess = {this.sendMess} messages={this.state.messages} updateInputMess={this.updateInputMess} 
+      //   closeConversation={this.closeConversation} imagePath={this.state.avatarPath} handleSendFile={this.handleSendFile}/>
+      // );
+      
+    }
+
   }
 }
 

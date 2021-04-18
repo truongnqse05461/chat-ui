@@ -59,7 +59,7 @@ class MessageContainer extends Component {
                     <img onClick={this.handleOpenImage} style={{ cursor: "pointer" }}  src={this.baseHost + msgObj.content} alt="..." />
                 : <p>{msgObj.content}</p>
             )}
-            <span>({mess.author})</span>          
+            {!mess.isMine ? <span>({mess.author})</span> : ''}          
             </div>
         </div>
     ))
