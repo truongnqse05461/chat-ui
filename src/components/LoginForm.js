@@ -31,7 +31,7 @@ class LoginForm extends Component {
       errors: {},
       submitSuccessfully: false,
       authenticated: authenticated,
-      inRoom: true,
+      inRoom: false,
       roomName: "",
       messages: [],
       inputMessage: "",
@@ -196,6 +196,7 @@ class LoginForm extends Component {
     localStorage.removeItem("token")
     localStorage.removeItem("username")
     this.setState({ authenticated: false, inRoom: false });
+
   }
 
   createWSClient(roomName){
@@ -221,7 +222,8 @@ class LoginForm extends Component {
           "author": res.From,
           "content": res.Message,
           "isMine": false,
-          "type": res.MessageType
+          "type": res.MessageType, 
+          "filePath": res.FilePath,
         }
 
         this.handleMsgGroup(message);
@@ -238,37 +240,7 @@ class LoginForm extends Component {
 
   createRoom() {
 
-    // axios.post('http://localhost:8080/file/download' , {},
-    //     {
-    //       headers: {
-    //         // 'Content-Type' : 'application/octet-stream'
-    //         'Content-Type': 'multipart/form-data',
-    //       },
-    //       proxy: {
-    //         host: '10.61.57.22',
-    //         port: 3128
-    //       }
-    //     },
-    //     {
-    //       responseType: 'blob'
-    //     }
-    //     ).then(res => {
-    //       // console.log(res)
-    //       const url = window.URL.createObjectURL(new Blob([res.data]));
-    //         const link = document.createElement("a");
-    //         link.href = url;
-    //         link.setAttribute("download", "file.PNG"); //or any other extension
-    //         document.body.appendChild(link);
-    //         link.click();
-    //       // fileDownload(res.data, "test.xlsx");
-    //       // const url = window.URL.createObjectURL(new Blob([res.data]));
-    //       // const link = document.createElement('a');
-    //       // link.href = url;
-    //       // link.setAttribute('download', 'file.xlsx');
-    //       // document.body.appendChild(link);
-    //       // link.click();
-    //     })
-
+    
     // axios({
     //   url: 'http://localhost:8080/file/download',
     //   method: 'GET',
@@ -460,12 +432,14 @@ class LoginForm extends Component {
       "author": this.state.username,
       "content": messageRaw,
       "isMine": true,
-      "type": "text"
+      "type": "text",
+      "filePath": "",
     }
     this.handleMsgGroup(message)
     console.log(messageRaw)
     ws.send(JSON.stringify({
       Message: messageRaw,
+      Path: "",
       Type: "text", 
       Room: this.state.currentRoom,
     }));
@@ -495,13 +469,15 @@ class LoginForm extends Component {
         if (res.data.Code == 1) {
           let message = {
             "author": this.state.username,
-            "content": res.data.Data,
+            "content": res.data.Data.Content,
+            "filePath": res.data.Data.FilePath,
             "isMine": true,
             "type": "file"
           }
           this.handleMsgGroup(message)
           ws.send(JSON.stringify({
-            Message: res.data.Data,
+            Message: res.data.Data.Content,
+            Path: res.data.Data.FilePath,
             Type: "file",
             Room: this.state.currentRoom,
           }));
@@ -544,15 +520,26 @@ class LoginForm extends Component {
         console.log(res)
         if (res.data.Code == 1) {
           if (res.data.Data != null) {
+            let publicRoom = {};
+            let publicRoomIndex = 0;
             this.setState({ listRoom: res.data.Data });
             for(let i = 0; i < res.data.Data.length; i ++) {
               const room = res.data.Data[i];
+              
               if(room.Members.some(member => (member == username))){
                 this.renderChat(i, room);
                 this.setState({ inRoom: true, roomName: res.data.Data[i].Name});
                 break;
               }
-            };
+              if(room.Password == ""){
+                publicRoom = room;
+                publicRoomIndex = i;
+              }
+            }
+            if(!this.state.inRoom){
+              this.renderChat(publicRoomIndex, publicRoom);
+              this.setState({ inRoom: true, roomName: publicRoom.Name});
+            }
 
             
           }
@@ -582,7 +569,8 @@ class LoginForm extends Component {
           "author": mess.Author.Username,
           "content": mess.Content,
           "isMine": mess.Author.Username == username,
-          "type": mess.Type
+          "type": mess.Type,
+          "filePath": mess.FilePath
         }
         if (msgGroup.messages.length == 0) {
           msgGroup = {
@@ -706,7 +694,7 @@ class LoginForm extends Component {
       );
     }
 
-    else if (this.state.authenticated && this.state.inRoom) {
+    else {
       return (
         < ChatContainer roomName={this.state.roomName} sendMess={this.sendMess} messages={this.state.messages} updateInputMess={this.updateInputMess}
           closeConversation={this.closeConversation} imagePath={this.state.avatarPath} handleSendFile={this.handleSendFile}
@@ -714,13 +702,7 @@ class LoginForm extends Component {
           renderChat={this.renderChat} initChat={this.initChat} listMembers={this.state.listMembers} 
           currentRoomObj={this.state.currentRoomObj} logout={this.logout} />
       );
-    } else {
-      // return (
-      //   < MessageContainer roomName = {this.state.roomName} sendMess = {this.sendMess} messages={this.state.messages} updateInputMess={this.updateInputMess} 
-      //   closeConversation={this.closeConversation} imagePath={this.state.avatarPath} handleSendFile={this.handleSendFile}/>
-      // );
-      
-    }
+    } 
 
   }
 }

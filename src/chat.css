@@ -293,3 +293,7 @@ body{
 .card-title strong{
     font-weight: 800;
 }
+.media-chat-reverse a {
+    color: #fff;
+    text-decoration: underline;
+}

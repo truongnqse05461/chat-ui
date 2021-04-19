@@ -209,6 +209,14 @@ h4.card-title {
     transition: background-color .2s linear
 }
 
+.media-chat .media-body  {
+    display: grid;
+}
+
+.media-chat.media-chat-reverse .media-body {
+    display: table;
+}
+
 .media-chat.media-chat-reverse .media-body p {
     float: right;
     clear: right;
@@ -226,7 +234,7 @@ h4.card-title {
     padding: 6px 8px;
     margin: 4px 0;
     background-color: #f5f6f7;
-    width: 150px;
+    width: 300px;
 }
 
 .media-chat .media-body p {

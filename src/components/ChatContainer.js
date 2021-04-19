@@ -12,6 +12,7 @@ import '../modal.css';
 
 var selectedRoom = {};
 var selectedRoomIndex = 0;
+const imageType = ["jpeg", "png", "jpg", "tif", "tiff", "bmp", "gif", "jfif", "webp"]
 
 class ChatContainer extends Component {
     messagesEnd = undefined;
@@ -88,7 +89,10 @@ class ChatContainer extends Component {
             link.setAttribute('data-toggle', 'modal');
             document.body.appendChild(link);
             link.click();
-        } else {
+        } if (room.Password == "" && !room.Members.some(member => (member === username))) {
+            this.joinChat()
+        }
+        else {
             this.getMessagesByRoom(i, room.Name);
             // this.props.renderChat(i, room);
         }
@@ -205,7 +209,7 @@ class ChatContainer extends Component {
                     <div className="name">{room.Name}</div>
                     <div className="status"> 
                     {/* <i className="fa fa-circle online" />  */}
-                    {room.Members.length} members
+                    {room.Members != undefined ? room.Members.length : 0} members
                      </div>
                 </div>
             </li>
@@ -217,9 +221,10 @@ class ChatContainer extends Component {
                 <div className="media-body">
 
                     {mess.messages.map(msgObj => msgObj.type == "file"
-                        ?
-                        <img onClick={this.handleOpenImage} style={{ cursor: "pointer" }} src={this.baseHost + msgObj.content} alt="..." />
-                        : <p>{msgObj.content}</p>
+                        ? imageType.some(type => (type == msgObj.filePath.split(".")[1].toLowerCase())) ? 
+                        <img onClick={this.handleOpenImage} style={{ cursor: "pointer" }} src={this.baseHost + msgObj.filePath} alt={msgObj.content} /> 
+                        : <p style={{width: "fit-content"}}> <a href={"http://localhost:8080/file/download?file=" + msgObj.filePath + "&name=" + msgObj.content}>{msgObj.content}</a> </p>
+                        : <p style={{width: "fit-content"}}>{msgObj.content}</p>
                     )}
                     {!mess.isMine ? <span>({mess.author})</span> : ''}
                 </div>
